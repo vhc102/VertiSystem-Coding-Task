@@ -1,0 +1,57 @@
+name: Model CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: electricity-price-model
+  CONTAINER_REGISTRY: ghcr.io/${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set Up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.8'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Unit Tests
+        run: |
+          pytest tests/
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Login to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u USERNAME --password-stdin
+
+      - name: Build and Push Docker Image
+        run: |
+          docker build -t $CONTAINER_REGISTRY:$GITHUB_SHA .
+          docker push $CONTAINER_REGISTRY:$GITHUB_SHA
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: docker-build
+    steps:
+      - name: Deploy Model Container
+        run: |
+          ssh user@server "docker pull $CONTAINER_REGISTRY:$GITHUB_SHA && docker run -d -p 8080:8080 $CONTAINER_REGISTRY:$GITHUB_SHA"
